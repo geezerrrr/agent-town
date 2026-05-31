@@ -22,7 +22,7 @@ interface DiscoveredAgent {
   soul?: string;
 }
 
-const OPENCLAW_DIR = path.join(os.homedir(), ".openclaw");
+const OPENCLAW_DIR = process.env.OPENCLAW_DIR || path.join(os.homedir(), ".openclaw");
 const OPENCLAW_CONFIG = path.join(OPENCLAW_DIR, "openclaw.json");
 const AGENTS_DIR = path.join(OPENCLAW_DIR, "agents");
 

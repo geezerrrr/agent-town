@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject } from "react";
-import type { ChatMessage } from "@/types/game";
+import type { ChatMessage, SessionRecord } from "@/types/game";
 import type { GatewayClient } from "../gateway";
 import { loadSessionPreview } from "../gateway-handler";
 import { gameEvents } from "../events";
-import { saveActiveSessionKey } from "../persistence";
+import { saveActiveSessionKey, addDeletedSessionKey } from "../persistence";
 import type { Action } from "../reducer";
 import { generateSessionKey, MAIN_SESSION_KEY } from "../reducer";
 import { createLogger } from "../logger";
@@ -20,6 +20,7 @@ export interface SessionRefs {
   seenStarts: MutableRefObject<Set<string>>;
   bubbleAccum: MutableRefObject<Map<string, string>>;
   stoppedRunIds: MutableRefObject<Set<string>>;
+  sessions: MutableRefObject<SessionRecord[]>;
 }
 
 export function useSession(refs: SessionRefs) {
@@ -36,7 +37,7 @@ export function useSession(refs: SessionRefs) {
     const newKey = generateSessionKey();
     const record = {
       key: newKey,
-      label: `Session ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+      label: `Session ${refs.sessions.current.length + 1}`,
       createdAt: new Date().toISOString(),
     };
 
@@ -103,6 +104,38 @@ export function useSession(refs: SessionRefs) {
     return seatIdToSessionKeyRef.current.get(seatId);
   }, []);
 
+  const deleteSession = useCallback(
+    async (sessionKey: string, allSessions: { key: string }[]) => {
+      addDeletedSessionKey(sessionKey);
+      const remaining = allSessions.filter((s) => s.key !== sessionKey);
+      const nextKey = remaining[0]?.key;
+
+      if (sessionKey === refs.activeSessionKey.current) {
+        clearTransientState();
+        if (nextKey) {
+          refs.setActiveSessionKey(nextKey);
+          saveActiveSessionKey(nextKey);
+        }
+      }
+
+      refs.dispatch.current({ type: "DELETE_SESSION", sessionKey, nextSessionKey: nextKey });
+
+      if (sessionKey === refs.activeSessionKey.current && nextKey) {
+        const client = refs.clientRef.current;
+        let messages: ChatMessage[] = [];
+        try {
+          messages = client ? await loadSessionPreview(client, nextKey) : [];
+        } catch {}
+        refs.dispatch.current({
+          type: "HYDRATE_SESSION_CHAT",
+          sessionKey: nextKey,
+          chatMessages: messages,
+        });
+      }
+    },
+    [refs, clearTransientState],
+  );
+
   const loadSessionChat = useCallback(
     async (sessionKey: string): Promise<ChatMessage[]> => {
       const client = refs.clientRef.current;
@@ -128,6 +161,7 @@ export function useSession(refs: SessionRefs) {
     seatIdToSessionKeyRef,
     newSession,
     switchSession,
+    deleteSession,
     prepareSessionForSeat,
     newSessionForSeat,
     getBoundSessionForSeat,

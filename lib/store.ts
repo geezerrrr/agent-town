@@ -51,10 +51,13 @@ interface StudioContextValue {
   updateSeatConfig: (seatId: string, patch: Partial<SeatState>) => void;
   newSession: () => void;
   switchSession: (sessionKey: string) => void;
+  deleteSession: (sessionKey: string) => void;
   prepareSessionForSeat: (seatId: string) => Promise<void>;
   newSessionForSeat: (seatId: string) => void;
   getBoundSessionForSeat: (seatId: string) => string | undefined;
   loadSessionChat: (sessionKey: string) => Promise<ChatMessage[]>;
+  clearChat: () => void;
+  deleteMessage: (messageId: string) => void;
 }
 
 const StudioContext = createContext<StudioContextValue | null>(null);
@@ -75,6 +78,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   tasksRef.current = state.tasks;
   const seatsRef = useRef<SeatState[]>(state.seats);
   seatsRef.current = state.seats;
+  const sessionsRef = useRef(state.sessions);
+  sessionsRef.current = state.sessions;
   const seatConfigRef = useRef<PersistedSeatConfig[]>([]);
   const activeSessionKeyRef = useRef<string | undefined>(undefined);
   const taskCounterRef = useRef(0);
@@ -108,6 +113,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     seenStarts: gateway.seenStartsRef,
     bubbleAccum: gateway.bubbleAccumRef,
     stoppedRunIds: gateway.stoppedRunIdsRef,
+    sessions: sessionsRef,
   });
 
   // ── Task router hook ──
@@ -249,6 +255,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }, [state.tasks, state.chatMessages, state.sessions]);
 
   useEffect(() => {
+    if (state.seats.length === 0) return;
+
     const configs: PersistedSeatConfig[] = state.seats.map((seat) => ({
       seatId: seat.seatId,
       label: seat.label,
@@ -264,7 +272,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     gameEvents.emit("seat-configs-updated", state.seats);
 
     // Sync worker roster to server for auggie MCP dispatch
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_AGENT_PROVIDER === "auggie") {
       fetch("/api/internal/seat-sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -296,6 +304,23 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     dispatchRef.current({ type: "UPDATE_SEAT_CONFIG", seatId, patch });
   }, []);
 
+  const clearChat = useCallback(() => {
+    const sessionKey = activeSessionKeyRef.current;
+    if (!sessionKey) return;
+    dispatchRef.current({ type: "CLEAR_CHAT", sessionKey });
+  }, []);
+
+  const deleteMessage = useCallback((messageId: string) => {
+    dispatchRef.current({ type: "DELETE_MESSAGE", messageId });
+  }, []);
+
+  const deleteSession = useCallback(
+    (sessionKey: string) => {
+      session.deleteSession(sessionKey, state.sessions);
+    },
+    [session, state.sessions],
+  );
+
   return React.createElement(
     StudioContext.Provider,
     {
@@ -307,10 +332,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         updateSeatConfig,
         newSession: session.newSession,
         switchSession: session.switchSession,
+        deleteSession,
         prepareSessionForSeat: session.prepareSessionForSeat,
         newSessionForSeat: session.newSessionForSeat,
         getBoundSessionForSeat: session.getBoundSessionForSeat,
         loadSessionChat: session.loadSessionChat,
+        clearChat,
+        deleteMessage,
       },
     },
     children,

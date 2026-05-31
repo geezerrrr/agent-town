@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, ChevronDown } from "lucide-react";
+import { Plus, ChevronDown, X } from "lucide-react";
 import { useStudio } from "@/lib/store";
 import { formatRelativeTime } from "@/lib/constants";
 import type { SessionRecord } from "@/types/game";
@@ -13,7 +13,7 @@ export default function SessionSwitcher({
   sessions: SessionRecord[];
   activeKey?: string;
 }) {
-  const { newSession, switchSession } = useStudio();
+  const { newSession, switchSession, deleteSession } = useStudio();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -73,22 +73,36 @@ export default function SessionSwitcher({
             sessions.map((session) => {
               const isActive = session.key === activeKey;
               return (
-                <button
-                  key={session.key}
-                  type="button"
-                  className={`session-dropdown__item ${isActive ? "session-dropdown__item--active" : ""}`}
-                  onClick={() => {
-                    switchSession(session.key);
-                    setOpen(false);
-                  }}
-                >
-                  <div style={{ fontWeight: isActive ? "bold" : "normal" }}>
-                    {session.label ?? session.key.split(":").pop()}
-                  </div>
-                  <div className="session-dropdown__time">
-                    {formatRelativeTime(session.createdAt)}
-                  </div>
-                </button>
+                <div key={session.key} className="session-dropdown__row">
+                  <button
+                    type="button"
+                    className={`session-dropdown__item ${isActive ? "session-dropdown__item--active" : ""}`}
+                    onClick={() => {
+                      switchSession(session.key);
+                      setOpen(false);
+                    }}
+                  >
+                    <div style={{ fontWeight: isActive ? "bold" : "normal" }}>
+                      {session.label ?? session.key.split(":").pop()}
+                    </div>
+                    <div className="session-dropdown__time">
+                      {formatRelativeTime(session.createdAt)}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className="session-dropdown__delete"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteSession(session.key);
+                      setOpen(false);
+                    }}
+                    title="Delete session"
+                    aria-label="Delete session"
+                  >
+                    <X size={8} />
+                  </button>
+                </div>
               );
             })
           )}

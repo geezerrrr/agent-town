@@ -23,6 +23,7 @@ import {
   LS_SEAT_CONFIG,
   LS_BGM_VOLUME,
   LS_ONBOARDING_DONE,
+  LS_DELETED_SESSIONS,
   DEFAULT_BGM_VOLUME,
   MAX_SESSIONS,
 } from "./constants";
@@ -130,4 +131,15 @@ export function loadOnboardingDone(): boolean {
 
 export function saveOnboardingDone() {
   lsSet(LS_ONBOARDING_DONE, true);
+}
+
+export function loadDeletedSessionKeys(): Set<string> {
+  return new Set(lsGet<string[]>(LS_DELETED_SESSIONS, []));
+}
+
+export function addDeletedSessionKey(key: string) {
+  const existing = lsGet<string[]>(LS_DELETED_SESSIONS, []);
+  if (!existing.includes(key)) {
+    lsSet(LS_DELETED_SESSIONS, [...existing, key]);
+  }
 }

@@ -23,6 +23,7 @@ import {
 } from "./gateway-types";
 import { gameEvents } from "./events";
 import { chatId, findTask, MAIN_SESSION_KEY } from "./reducer";
+import { loadDeletedSessionKeys } from "./persistence";
 import { createLogger } from "./logger";
 
 const log = createLogger("Gateway");
@@ -102,7 +103,10 @@ async function refreshSessionMetrics(refs: HandlerRefs, client: GatewayClient) {
     const response = await client.request("sessions.list", {});
     const payload = (response.payload ?? {}) as SessionsListPayload;
     const gatewaySessions = Array.isArray(payload.sessions) ? payload.sessions : [];
-    const nonSubagent = gatewaySessions.filter((s) => !SUBAGENT_KEY_RE.test(s.key));
+    const deletedKeys = loadDeletedSessionKeys();
+    const nonSubagent = gatewaySessions.filter(
+      (s) => !SUBAGENT_KEY_RE.test(s.key) && !deletedKeys.has(s.key),
+    );
 
     const sessionRecords: SessionRecord[] = nonSubagent.map((s, i) => ({
       key: s.key,
@@ -260,6 +264,11 @@ export function wireGatewayClient(client: GatewayClient, refs: HandlerRefs) {
             },
           });
         } else {
+          const agentId = sessionKey?.match(/^agent:([^:]+):main$/)?.[1];
+          if (agentId && agentId !== "main") {
+            const seat = refs.seats().find((s) => s.agentConfig?.agentId === agentId);
+            if (seat) gameEvents.emit("run-seat-bound", runId, seat.seatId);
+          }
           refresh();
         }
       } else if (data.phase === "end") {

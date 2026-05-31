@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { SendHorizontal } from "lucide-react";
+import { SendHorizontal, ChevronDown } from "lucide-react";
 import { useStudio } from "@/lib/store";
 import { gameEvents } from "@/lib/events";
-import type { ChatMessage, SessionRecord, TaskItem } from "@/types/game";
+import type { ChatMessage, SessionRecord, SeatState, TaskItem } from "@/types/game";
 import { findTask } from "@/lib/reducer";
 import HudFlyout from "./HudFlyout";
 import MessageBubble from "./MessageBubble";
@@ -17,17 +17,33 @@ export default function ChatPanel({
   isConnected,
   sessions,
   activeSessionKey,
+  seats = [],
 }: {
   messages: ChatMessage[];
   tasks: TaskItem[];
   isConnected: boolean;
   sessions: SessionRecord[];
   activeSessionKey?: string;
+  seats?: SeatState[];
 }) {
-  const { assignTask } = useStudio();
+  const { assignTask, deleteMessage } = useStudio();
   const [input, setInput] = useState("");
+  const [selectedSeatId, setSelectedSeatId] = useState<string>("");
+  const [targetOpen, setTargetOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const targetRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!targetOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (targetRef.current && !targetRef.current.contains(e.target as Node)) setTargetOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [targetOpen]);
+
+  const assignableSeats = useMemo(() => seats.filter((s) => s.assigned && s.spriteKey), [seats]);
 
   const actorByRunId = useMemo(() => {
     const map = new Map<string, string>();
@@ -59,7 +75,7 @@ export default function ChatPanel({
   const handleSend = () => {
     const trimmed = input.trim();
     if (!trimmed || !isConnected) return;
-    assignTask(trimmed);
+    assignTask(trimmed, selectedSeatId || undefined);
     setInput("");
     requestAnimationFrame(() => inputRef.current?.focus());
   };
@@ -114,6 +130,7 @@ export default function ChatPanel({
                             ? () => stopHandler(task.runId ?? task.taskId, task.seatId ?? "")
                             : undefined
                         }
+                        onDelete={() => deleteMessage(message.id)}
                       />
                     </div>
                   </div>
@@ -122,6 +139,76 @@ export default function ChatPanel({
             </div>
           )}
         </div>
+
+        {assignableSeats.length > 0 && (
+          <div className="hud-chat-target-row">
+            <span className="hud-chat-target-label">To:</span>
+            <div ref={targetRef} className="session-switcher" style={{ flex: 1 }}>
+              <button
+                type="button"
+                className="pixel-button"
+                style={{
+                  fontSize: 7,
+                  padding: "3px 8px",
+                  whiteSpace: "nowrap",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  flex: 1,
+                  justifyContent: "space-between",
+                }}
+                onClick={() => setTargetOpen((prev) => !prev)}
+                disabled={!isConnected}
+              >
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {selectedSeatId
+                    ? (assignableSeats.find((s) => s.seatId === selectedSeatId)?.label ??
+                      selectedSeatId)
+                    : "Auto (first idle)"}
+                </span>
+                <ChevronDown
+                  size={10}
+                  style={{ flexShrink: 0, transform: targetOpen ? "rotate(180deg)" : undefined }}
+                />
+              </button>
+
+              {targetOpen && (
+                <div
+                  className="session-dropdown"
+                  style={{ right: "auto", left: 0, minWidth: "100%" }}
+                >
+                  <div className="session-dropdown__row">
+                    <button
+                      type="button"
+                      className={`session-dropdown__item ${selectedSeatId === "" ? "session-dropdown__item--active" : ""}`}
+                      onClick={() => {
+                        setSelectedSeatId("");
+                        setTargetOpen(false);
+                      }}
+                    >
+                      Auto (first idle)
+                    </button>
+                  </div>
+                  {assignableSeats.map((seat) => (
+                    <div key={seat.seatId} className="session-dropdown__row">
+                      <button
+                        type="button"
+                        className={`session-dropdown__item ${selectedSeatId === seat.seatId ? "session-dropdown__item--active" : ""}`}
+                        onClick={() => {
+                          setSelectedSeatId(seat.seatId);
+                          setTargetOpen(false);
+                        }}
+                      >
+                        {seat.label}
+                        {seat.roleTitle ? ` · ${seat.roleTitle}` : ""}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="hud-chat-input-row">
           <textarea

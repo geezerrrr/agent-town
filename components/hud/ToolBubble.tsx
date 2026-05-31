@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ToolChatMessage } from "@/types/game";
+import MessageMenu from "./MessageMenu";
 
 function parseToolParts(msg: ToolChatMessage): { summary: string; detail: string | null } {
   let summary = msg.toolName;
@@ -24,12 +25,23 @@ function parseToolParts(msg: ToolChatMessage): { summary: string; detail: string
   return { summary, detail: msg.toolOutput ?? null };
 }
 
-export default function ToolBubble({ msg }: { msg: ToolChatMessage }) {
+export default function ToolBubble({
+  msg,
+  onDelete,
+}: {
+  msg: ToolChatMessage;
+  onDelete?: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const { summary, detail } = parseToolParts(msg);
 
   return (
-    <div className="hud-chat__tool">
+    <div
+      className="hud-chat__tool"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <div
         style={{
           display: "flex",
@@ -39,15 +51,18 @@ export default function ToolBubble({ msg }: { msg: ToolChatMessage }) {
         }}
       >
         <div className="hud-chat__tool-name">{summary}</div>
-        {detail && (
-          <button
-            type="button"
-            className="hud-chat__tool-toggle"
-            onClick={() => setExpanded((v) => !v)}
-          >
-            {expanded ? "hide" : "show"}
-          </button>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {detail && (
+            <button
+              type="button"
+              className="hud-chat__tool-toggle"
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? "hide" : "show"}
+            </button>
+          )}
+          {onDelete && <MessageMenu onDelete={onDelete} visible={hovered} />}
+        </div>
       </div>
       {expanded && detail && <div className="hud-chat__tool-output">{detail}</div>}
     </div>

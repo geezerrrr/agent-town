@@ -17,6 +17,7 @@ export interface GameEventMap {
   "task-completed": [runId: string];
   "task-failed": [runId: string];
   "subagent-assigned": [runId: string, parentRunId: string, label: string, seatId?: string];
+  "run-seat-bound": [runId: string, seatId: string];
   "open-terminal": [seatId?: string];
   "open-terminal-queue": [seatId: string];
   "stop-task": [runId: string, seatId: string];

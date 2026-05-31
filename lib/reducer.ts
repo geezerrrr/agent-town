@@ -164,7 +164,10 @@ export type Action =
   | { type: "NEW_SESSION"; session: SessionRecord }
   | { type: "SET_SESSIONS"; sessions: SessionRecord[] }
   | { type: "HYDRATE_SESSION_CHAT"; sessionKey: string; chatMessages: ChatMessage[] }
-  | { type: "SWITCH_SESSION"; sessionKey: string };
+  | { type: "SWITCH_SESSION"; sessionKey: string }
+  | { type: "CLEAR_CHAT"; sessionKey: string }
+  | { type: "DELETE_MESSAGE"; messageId: string }
+  | { type: "DELETE_SESSION"; sessionKey: string; nextSessionKey?: string };
 
 // ── Initial state ──────────────────────────────────────
 
@@ -421,6 +424,35 @@ export function reducer(state: StudioSnapshot, action: Action): StudioSnapshot {
         sessionMetrics: createEmptySessionMetrics(),
         seats: resetSeatRuntime(state.seats),
       };
+
+    case "CLEAR_CHAT":
+      return {
+        ...state,
+        chatMessages: state.chatMessages.filter((m) => m.sessionKey !== action.sessionKey),
+      };
+
+    case "DELETE_MESSAGE":
+      return {
+        ...state,
+        chatMessages: state.chatMessages.filter((m) => m.id !== action.messageId),
+      };
+
+    case "DELETE_SESSION": {
+      const remaining = state.sessions.filter((s) => s.key !== action.sessionKey);
+      const nextKey =
+        state.activeSessionKey === action.sessionKey
+          ? (action.nextSessionKey ?? remaining[0]?.key)
+          : state.activeSessionKey;
+      return {
+        ...state,
+        sessions: remaining,
+        chatMessages: state.chatMessages.filter((m) => m.sessionKey !== action.sessionKey),
+        activeSessionKey: nextKey,
+        ...(state.activeSessionKey === action.sessionKey
+          ? { sessionMetrics: createEmptySessionMetrics(), seats: resetSeatRuntime(state.seats) }
+          : {}),
+      };
+    }
 
     default:
       return state;

@@ -10,6 +10,7 @@
  *   - Automatic reconnection with exponential backoff
  *   - Typed event dispatching
  *   - Request timeout management
+ *   - Device identity signing (Ed25519 via Web Crypto) for operator.write scope
  */
 
 import type { GatewayFrame } from "./gateway-types";
@@ -44,6 +45,136 @@ let counter = 0;
 function nextId(): string {
   return `aw_${++counter}_${Date.now()}`;
 }
+
+// ── Device identity (Ed25519, stored in localStorage) ──
+
+const DEVICE_STORAGE_KEY = "aw-device-v1";
+const CONNECT_SCOPES = ["operator.read", "operator.write", "operator.admin"];
+
+function toB64Url(bytes: Uint8Array): string {
+  let s = "";
+  for (const b of bytes) s += String.fromCodePoint(b);
+  return btoa(s).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function fromB64Url(s: string): Uint8Array<ArrayBuffer> {
+  const p = s.replaceAll("-", "+").replaceAll("_", "/");
+  const padded = p + "=".repeat((4 - (p.length % 4)) % 4);
+  const raw = atob(padded);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.codePointAt(i)!;
+  return out;
+}
+
+interface StoredDevice {
+  version: 1;
+  deviceId: string;
+  publicKey: string;
+  privateKeyPkcs8: string;
+  createdAtMs: number;
+}
+
+interface DeviceIdentity {
+  deviceId: string;
+  publicKey: string;
+  privateKeyPkcs8: Uint8Array;
+}
+
+async function loadDevice(): Promise<DeviceIdentity | null> {
+  try {
+    const raw = localStorage.getItem(DEVICE_STORAGE_KEY);
+    if (!raw) return null;
+
+    const stored = JSON.parse(raw) as StoredDevice;
+    if (!stored.deviceId) return null;
+
+    return {
+      deviceId: stored.deviceId,
+      publicKey: stored.publicKey,
+      privateKeyPkcs8: fromB64Url(stored.privateKeyPkcs8),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function createDevice(): Promise<DeviceIdentity | null> {
+  try {
+    const alg = { name: "Ed25519" } as AlgorithmIdentifier;
+    const kp = (await crypto.subtle.generateKey(alg, true, ["sign", "verify"])) as CryptoKeyPair;
+    const pub = new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey));
+    const priv = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
+    const hashBuf = new Uint8Array(await crypto.subtle.digest("SHA-256", pub.slice()));
+    const deviceId = Array.from(hashBuf)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    const stored: StoredDevice = {
+      version: 1,
+      deviceId,
+      publicKey: toB64Url(pub),
+      privateKeyPkcs8: toB64Url(priv),
+      createdAtMs: Date.now(),
+    };
+    localStorage.setItem(DEVICE_STORAGE_KEY, JSON.stringify(stored));
+    return { deviceId, publicKey: stored.publicKey, privateKeyPkcs8: priv };
+  } catch {
+    return null;
+  }
+}
+
+async function loadOrCreateDeviceIdentity(): Promise<DeviceIdentity | null> {
+  if (typeof localStorage === "undefined" || !globalThis.crypto?.subtle) {
+    return null;
+  }
+
+  return (await loadDevice()) ?? (await createDevice());
+}
+
+async function buildDeviceParams(
+  identity: DeviceIdentity,
+  token: string,
+  nonce: string,
+): Promise<Record<string, unknown>> {
+  const signedAt = Date.now();
+  const payload = [
+    "v2",
+    identity.deviceId,
+    "gateway-client",
+    "backend",
+    "operator",
+    CONNECT_SCOPES.join(","),
+    String(signedAt),
+    token,
+    nonce,
+  ].join("|");
+
+  const alg = { name: "Ed25519" } as AlgorithmIdentifier;
+  const privateKey = await crypto.subtle.importKey(
+    "pkcs8",
+    identity.privateKeyPkcs8.slice(),
+    alg,
+    false,
+    ["sign"],
+  );
+  const sigBuf = new Uint8Array(
+    (await crypto.subtle.sign(
+      "Ed25519",
+      privateKey,
+      new TextEncoder().encode(payload),
+    )) as ArrayBuffer,
+  );
+
+  return {
+    id: identity.deviceId,
+    publicKey: identity.publicKey,
+    signature: toB64Url(sigBuf),
+    signedAt,
+    nonce,
+  };
+}
+
+// ── GatewayClient ──────────────────────────────────────
 
 export class GatewayClient {
   private ws: WebSocket | null = null;
@@ -218,7 +349,8 @@ export class GatewayClient {
   private handleFrame(frame: GatewayFrame, onConnected?: (res: GatewayFrame) => void) {
     if (frame.type === "event") {
       if (frame.event === "connect.challenge") {
-        this.sendConnectHandshake();
+        const nonce = (frame.payload as { nonce?: string } | undefined)?.nonce ?? "";
+        void this.sendConnectHandshake(nonce);
         return;
       }
 
@@ -274,7 +406,8 @@ export class GatewayClient {
 
   private storeGrantedScopes(frame: GatewayFrame) {
     this._grantedScopes.clear();
-    const scopes = frame.payload?.scopes;
+    const scopes =
+      frame.payload?.scopes ?? (frame.payload?.auth as Record<string, unknown>)?.scopes;
     if (Array.isArray(scopes)) {
       for (const s of scopes) {
         if (typeof s === "string") this._grantedScopes.add(s);
@@ -282,15 +415,27 @@ export class GatewayClient {
     }
   }
 
-  private sendConnectHandshake() {
+  private async sendConnectHandshake(nonce: string) {
     const id = nextId();
+
+    // Attempt device signing for full operator scope
+    const identity = await loadOrCreateDeviceIdentity();
+    let deviceParam: Record<string, unknown> | undefined;
+    if (identity) {
+      try {
+        deviceParam = await buildDeviceParams(identity, this.token, nonce);
+      } catch {
+        // signing failed — proceed without device identity
+      }
+    }
+
     const frame: GatewayFrame = {
       type: "req",
       id,
       method: "connect",
       params: {
         minProtocol: 3,
-        maxProtocol: 3,
+        maxProtocol: 4,
         client: {
           id: "gateway-client",
           displayName: "Agent Town",
@@ -301,8 +446,9 @@ export class GatewayClient {
         },
         auth: { token: this.token },
         role: "operator",
-        scopes: ["operator.read", "operator.write", "operator.admin"],
+        scopes: CONNECT_SCOPES,
         locale: "en-US",
+        ...(deviceParam ? { device: deviceParam } : {}),
       },
     };
 

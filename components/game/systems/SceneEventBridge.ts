@@ -101,6 +101,15 @@ export function initSceneEventBridge(
   );
 
   unsubs.push(
+    gameEvents.on("run-seat-bound", (runId, seatId) => {
+      if (workerManager.runWorkerMap.has(runId)) return;
+      const worker = workerManager.findBySeatId(seatId);
+      if (!worker) return;
+      workerManager.runWorkerMap.set(runId, worker);
+    }),
+  );
+
+  unsubs.push(
     gameEvents.on("subagent-assigned", (runId, _parentRunId, label, seatId?) => {
       const worker = seatId
         ? (workerManager.findBySeatId(seatId) ?? workerManager.findIdle())

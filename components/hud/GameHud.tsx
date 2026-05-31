@@ -154,6 +154,7 @@ export default function GameHud() {
                 isConnected={state.connection === "connected"}
                 sessions={state.sessions}
                 activeSessionKey={state.activeSessionKey}
+                seats={state.seats}
               />
             </div>
           )}
