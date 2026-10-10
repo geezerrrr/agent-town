@@ -1,6 +1,6 @@
 {
   "name": "@geezerrrr/agent-town",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Pixel-style AI Agent collaboration community — visualize your agents working in a pixel art office",
   "license": "MIT",
   "bin": {
