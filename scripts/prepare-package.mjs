@@ -6,6 +6,7 @@
  * 2. Copy public/        → .next/standalone/public/
  * 3. Copy .next/static/  → .next/standalone/.next/static/
  * 4. Copy server.prod.mjs → .next/standalone/server.prod.mjs
+ * 5. Copy lib/*.mjs runtime modules → .next/standalone/lib/
  */
 
 import { existsSync, readdirSync, statSync, mkdirSync, rmSync, renameSync, cpSync } from "node:fs";
@@ -82,5 +83,11 @@ console.log("  done  .next/static/ → standalone/.next/static/");
 // --- 4. Copy server.prod.mjs ---
 cpSync(resolve(root, "server.prod.mjs"), resolve(standalone, "server.prod.mjs"));
 console.log("  done  server.prod.mjs → standalone/server.prod.mjs");
+
+// --- 5. Copy runtime modules imported by server.prod.mjs ---
+for (const file of ["ws-proxy.mjs", "auggie-bridge.mjs", "mcp/agent-town-mcp.mjs"]) {
+  cpSync(resolve(root, "lib", file), resolve(standalone, "lib", file));
+}
+console.log("  done  lib/*.mjs → standalone/lib/");
 
 console.log("\n  Standalone package ready.\n");
