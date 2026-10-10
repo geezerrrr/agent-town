@@ -54,6 +54,7 @@ export const STATUS_LABELS: Record<ConnectionStatus, string> = {
   auth_failed: "Offline",
   unreachable: "Offline",
   rate_limited: "Offline",
+  protocol_mismatch: "Offline",
 };
 
 // ── Persistence keys ─────────────────────────────────────

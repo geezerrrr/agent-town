@@ -42,7 +42,8 @@ export default function GameHud() {
     if (
       state.connection === "auth_failed" ||
       state.connection === "unreachable" ||
-      state.connection === "rate_limited"
+      state.connection === "rate_limited" ||
+      state.connection === "protocol_mismatch"
     ) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reacting to connection state
       setOpenPanel("connection");

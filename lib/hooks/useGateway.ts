@@ -72,7 +72,12 @@ export function useGateway(refs: GatewayRefs) {
         })
         .catch((err) => {
           log.warn("connect failed:", err.message);
-          const terminalStates = new Set(["auth_failed", "unreachable", "rate_limited"]);
+          const terminalStates = new Set([
+            "auth_failed",
+            "unreachable",
+            "rate_limited",
+            "protocol_mismatch",
+          ]);
           if (!terminalStates.has(client.status)) {
             refs.dispatch.current({ type: "SET_CONNECTION", status: "error" });
           }
