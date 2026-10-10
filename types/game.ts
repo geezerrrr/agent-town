@@ -7,7 +7,8 @@ export type ConnectionStatus =
   | "error"
   | "auth_failed"
   | "unreachable"
-  | "rate_limited";
+  | "rate_limited"
+  | "protocol_mismatch";
 
 export type SeatFacing = "right" | "up" | "left" | "down";
 

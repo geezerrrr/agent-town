@@ -33,6 +33,7 @@ export default function ConnectionPanel() {
   const isAuthFailed = state.connection === "auth_failed";
   const isUnreachable = state.connection === "unreachable";
   const isRateLimited = state.connection === "rate_limited";
+  const isProtocolMismatch = state.connection === "protocol_mismatch";
 
   const [error, setError] = useState("");
 
@@ -113,6 +114,11 @@ export default function ConnectionPanel() {
         {isRateLimited && !error && (
           <p style={{ color: "var(--pixel-red)", fontSize: "8px" }}>
             Too many failed attempts. Please wait a moment before retrying.
+          </p>
+        )}
+        {isProtocolMismatch && !error && (
+          <p style={{ color: "var(--pixel-red)", fontSize: "8px" }}>
+            Gateway protocol version is not supported. Please update Agent Town or your gateway.
           </p>
         )}
         {error && <p style={{ color: "var(--pixel-red)", fontSize: "8px" }}>{error}</p>}

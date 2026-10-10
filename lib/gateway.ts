@@ -29,7 +29,8 @@ export type GatewayStatus =
   | "error"
   | "auth_failed"
   | "unreachable"
-  | "rate_limited";
+  | "rate_limited"
+  | "protocol_mismatch";
 
 // ── Reconnect config ───────────────────────────────────
 
@@ -39,6 +40,8 @@ const RECONNECT_FACTOR = 2;
 const RECONNECT_MAX_ATTEMPTS = 3;
 const HANDSHAKE_TIMEOUT_MS = 15000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
+const MIN_PROTOCOL = 3;
+const MAX_PROTOCOL = 4;
 
 let counter = 0;
 function nextId(): string {
@@ -142,7 +145,8 @@ export class GatewayClient {
         if (
           this._status !== "auth_failed" &&
           this._status !== "unreachable" &&
-          this._status !== "rate_limited"
+          this._status !== "rate_limited" &&
+          this._status !== "protocol_mismatch"
         ) {
           this.setStatus("error");
         }
@@ -155,7 +159,8 @@ export class GatewayClient {
         if (
           this._status !== "auth_failed" &&
           this._status !== "unreachable" &&
-          this._status !== "rate_limited"
+          this._status !== "rate_limited" &&
+          this._status !== "protocol_mismatch"
         ) {
           this.setStatus("disconnected");
         }
@@ -289,8 +294,8 @@ export class GatewayClient {
       id,
       method: "connect",
       params: {
-        minProtocol: 3,
-        maxProtocol: 3,
+        minProtocol: MIN_PROTOCOL,
+        maxProtocol: MAX_PROTOCOL,
         client: {
           id: "gateway-client",
           displayName: "Agent Town",
@@ -317,8 +322,13 @@ export class GatewayClient {
       reject: (err) => {
         // Server explicitly rejected the handshake — stop retrying immediately.
         this.autoReconnect = false;
-        const isRateLimited = /rate.limit|too many/i.test(err.message);
-        this.setStatus(isRateLimited ? "rate_limited" : "auth_failed");
+        if (/protocol mismatch/i.test(err.message)) {
+          this.setStatus("protocol_mismatch");
+        } else if (/rate.limit|too many/i.test(err.message)) {
+          this.setStatus("rate_limited");
+        } else {
+          this.setStatus("auth_failed");
+        }
         this.rejectConnect(err);
       },
       timer,
