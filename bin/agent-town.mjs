@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -58,4 +58,4 @@ if (provider) {
 process.env.NODE_ENV = "production";
 
 const serverPath = resolve(root, ".next", "standalone", "server.prod.mjs");
-await import(serverPath);
+await import(pathToFileURL(serverPath).href);
